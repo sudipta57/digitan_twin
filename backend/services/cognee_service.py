@@ -6,16 +6,18 @@ from backend.models.schemas import SourceMetadata, Citation, Contradiction, Topi
 
 class CogneeService:
 
-    def __init__(self):
-        cognee.config.set_llm_config({
-            "provider": "anthropic",
-            "model": "claude-sonnet-4-6",
-            "api_key": os.getenv("ANTHROPIC_API_KEY"),
-        })
-        cognee.config.set_vector_db_config({
-            "provider": "cognee_cloud",
-            "api_key": os.getenv("COGNEE_API_KEY"),
-        })
+    _connected = False
+
+    async def _ensure_connected(self):
+        """Connect to Cognee Cloud once per process. Cognee Cloud manages its
+        own LLM/vector-db config server-side, so no local config is needed."""
+        if CogneeService._connected:
+            return
+        await cognee.serve(
+            url=os.getenv("COGNEE_BASE_URL"),
+            api_key=os.getenv("COGNEE_API_KEY"),
+        )
+        CogneeService._connected = True
 
     async def ingest_chunks(
         self,
@@ -24,13 +26,14 @@ class CogneeService:
         metadata: SourceMetadata,
     ) -> dict:
         """Ingest pre-tagged chunks into figure's isolated Cognee dataset."""
+        await self._ensure_connected()
         start = time.time()
         dataset_name = f"figure_{figure_id}"
 
         for chunk in chunks:
             await cognee.remember(chunk, dataset_name=dataset_name)
 
-        await cognee.improve(dataset_name=dataset_name)
+        await cognee.improve(dataset=dataset_name)
 
         elapsed_ms = int((time.time() - start) * 1000)
         topics = await self._detect_topics(figure_id, chunks)
@@ -42,31 +45,35 @@ class CogneeService:
         }
 
     async def query_figure(self, figure_id: str, question: str) -> dict:
+        await self._ensure_connected()
         dataset_name = f"figure_{figure_id}"
-        results = await cognee.recall(question, dataset_name=dataset_name)
+        results = await cognee.recall(question, datasets=[dataset_name])
         return results
 
     async def get_contradictions(self, figure_id: str) -> list[Contradiction]:
+        await self._ensure_connected()
         dataset_name = f"figure_{figure_id}"
 
-        await cognee.improve(dataset_name=dataset_name)
+        await cognee.improve(dataset=dataset_name)
 
         raw = await cognee.recall(
             "Find beliefs and opinions that contradict each other or changed over time",
-            dataset_name=dataset_name,
+            datasets=[dataset_name],
         )
 
         return self._parse_contradictions(raw)
 
     async def get_topics(self, figure_id: str) -> list[Topic]:
+        await self._ensure_connected()
         dataset_name = f"figure_{figure_id}"
         raw = await cognee.recall(
             "What are the main topic areas and subject domains covered?",
-            dataset_name=dataset_name,
+            datasets=[dataset_name],
         )
         return self._parse_topics(raw)
 
     async def forget_source(self, figure_id: str, source_title: str) -> int:
+        await self._ensure_connected()
         dataset_key = f"figure_{figure_id}_{source_title.replace(' ', '_').lower()}"
         await cognee.forget(dataset=dataset_key)
         return 12
@@ -75,7 +82,7 @@ class CogneeService:
         dataset_name = f"figure_{figure_id}"
         raw = await cognee.recall(
             "List the main topics and subject areas in the ingested content",
-            dataset_name=dataset_name,
+            datasets=[dataset_name],
         )
         topics = []
         if isinstance(raw, list):

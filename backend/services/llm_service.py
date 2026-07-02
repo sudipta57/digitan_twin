@@ -77,7 +77,11 @@ KNOWN CONTRADICTIONS IN YOUR WORLDVIEW:
 class LLMService:
 
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        self.model = os.getenv("LLM_MODEL", "glm-5.2")
+        self.client = anthropic.Anthropic(
+            api_key=os.getenv("ZAI_API_KEY"),
+            base_url=os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/anthropic"),
+        )
 
     async def generate_response(
         self,
@@ -105,7 +109,7 @@ class LLMService:
         messages.append({"role": "user", "content": user_message})
 
         response = self.client.messages.create(
-            model="claude-sonnet-4-6",
+            model=self.model,
             max_tokens=1500,
             system=system_prompt,
             messages=messages,

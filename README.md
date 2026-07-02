@@ -30,7 +30,7 @@ User question
 POST /chat  →  cognee.recall(question, dataset=figure)
     │
     ▼
-Claude API  ←  memory context + contradiction data + persona
+GLM-5 (z.ai)  ←  memory context + contradiction data + persona
     │
     ▼
 Response with citations + confidence badge (direct / extrapolated / speculative)
@@ -47,7 +47,7 @@ Response with citations + confidence badge (direct / extrapolated / speculative)
 
 ## Stack
 
-FastAPI · React + TypeScript · Tailwind CSS · Cognee Cloud · Claude API · Railway · Vercel
+FastAPI · React + TypeScript · Tailwind CSS · Cognee Cloud · GLM-5 (z.ai) · Railway · Vercel
 
 ## Running Locally
 
@@ -60,7 +60,7 @@ pip install -r requirements.txt
 
 # Set up env
 cp .env.example .env
-# Edit .env with your COGNEE_API_KEY and ANTHROPIC_API_KEY
+# Edit .env with your COGNEE_API_KEY and ZAI_API_KEY
 
 # Start server
 uvicorn backend.main:app --reload
@@ -85,7 +85,7 @@ Open http://localhost:5173
 
 **Backend → Railway**
 - Connect GitHub repo, set root to `/backend`
-- Set env vars: `COGNEE_API_KEY`, `ANTHROPIC_API_KEY`, `FRONTEND_URL`
+- Set env vars: `COGNEE_API_KEY`, `ZAI_API_KEY`, `FRONTEND_URL`
 - Railway uses `Procfile` automatically
 
 **Frontend → Vercel**
@@ -104,7 +104,7 @@ digital-twin/
 │   │   └── graph.py             # GET /figures, /topics, /contradictions, DELETE /source
 │   ├── services/
 │   │   ├── cognee_service.py    # All Cognee Cloud interactions
-│   │   ├── llm_service.py       # Claude prompt building + response parsing
+│   │   ├── llm_service.py       # GLM-5 prompt building + response parsing
 │   │   └── parser_service.py    # PDF/URL/text chunking
 │   ├── models/
 │   │   └── schemas.py           # Pydantic models
