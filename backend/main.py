@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
+from pathlib import Path
 import os
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 from backend.routers import ingest, chat, graph
 
@@ -27,6 +29,8 @@ app.add_middleware(
 app.include_router(ingest.router)
 app.include_router(chat.router)
 app.include_router(graph.router)
+
+app.mount("/portraits", StaticFiles(directory=Path(__file__).parent / "data" / "figures"), name="portraits")
 
 
 @app.get("/health")

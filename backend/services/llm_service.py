@@ -1,7 +1,8 @@
-import anthropic
 import json
 import os
 import re
+from google import genai
+from google.genai import types
 from backend.models.schemas import Message, Citation
 
 
@@ -77,11 +78,17 @@ KNOWN CONTRADICTIONS IN YOUR WORLDVIEW:
 class LLMService:
 
     def __init__(self):
-        self.model = os.getenv("LLM_MODEL", "glm-5.2")
-        self.client = anthropic.Anthropic(
-            api_key=os.getenv("ZAI_API_KEY"),
-            base_url=os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/anthropic"),
-        )
+        self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self._client = None
+
+    @property
+    def client(self):
+        if self._client is None:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY is not set in environment")
+            self._client = genai.Client(api_key=api_key)
+        return self._client
 
     async def generate_response(
         self,
@@ -103,19 +110,32 @@ class LLMService:
             contradiction_context=contradiction_context or "No known contradictions.",
         )
 
-        messages = []
+        # Gemini only supports system_instruction for the first turn;
+        # we pass conversation history as alternating user/model turns
+        contents = []
         for msg in conversation_history[-6:]:
-            messages.append({"role": msg.role, "content": msg.content})
-        messages.append({"role": "user", "content": user_message})
+            role = "user" if msg.role == "user" else "model"
+            contents.append(types.Content(
+                role=role,
+                parts=[types.Part.from_text(text=msg.content)],
+            ))
+        contents.append(types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=user_message)],
+        ))
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=1500,
-            system=system_prompt,
-            messages=messages,
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=1500,
         )
 
-        raw_text = response.content[0].text
+        response = await self.client.aio.models.generate_content(
+            model=self.model,
+            contents=contents,
+            config=config,
+        )
+
+        raw_text = response.text
         return self._parse_response(raw_text)
 
     def _parse_response(self, raw_text: str) -> dict:

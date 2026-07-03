@@ -104,7 +104,7 @@ digital-twin/
 │   │   └── graph.py             # GET /figures, /topics, /contradictions, DELETE /source
 │   ├── services/
 │   │   ├── cognee_service.py    # All Cognee Cloud interactions
-│   │   ├── llm_service.py       # GLM-5 prompt building + response parsing
+│   │   ├── llm_service.py       # Gemini prompt building + response parsing
 │   │   └── parser_service.py    # PDF/URL/text chunking
 │   ├── models/
 │   │   └── schemas.py           # Pydantic models

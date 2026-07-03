@@ -42,7 +42,8 @@ class ParserService:
         return "\n\n".join(pages)
 
     def _parse_url(self, url: str) -> str:
-        response = httpx.get(url, timeout=15, follow_redirects=True)
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        response = httpx.get(url, headers=headers, timeout=15, follow_redirects=True)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 

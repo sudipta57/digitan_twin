@@ -33,7 +33,7 @@ class CogneeService:
         for chunk in chunks:
             await cognee.remember(chunk, dataset_name=dataset_name)
 
-        await cognee.improve(dataset=dataset_name)
+        await cognee.cognify(datasets=[dataset_name])
 
         elapsed_ms = int((time.time() - start) * 1000)
         topics = await self._detect_topics(figure_id, chunks)
@@ -54,7 +54,7 @@ class CogneeService:
         await self._ensure_connected()
         dataset_name = f"figure_{figure_id}"
 
-        await cognee.improve(dataset=dataset_name)
+        await cognee.cognify(datasets=[dataset_name])
 
         raw = await cognee.recall(
             "Find beliefs and opinions that contradict each other or changed over time",
