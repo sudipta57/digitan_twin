@@ -155,15 +155,15 @@ class LLMService:
                 raw_citations = json.loads(cite_match.group(1))
                 citations = [
                     Citation(
-                        quote=c.get("quote", ""),
-                        source=c.get("source", ""),
-                        year=int(c.get("year", 0)),
-                        doc_type=c.get("doc_type", "unknown"),
-                        relevance_score=float(c.get("relevance_score", 0.8)),
+                        quote=c.get("quote") or "",
+                        source=c.get("source") or "",
+                        year=int(c.get("year") or 0),
+                        doc_type=c.get("doc_type") or "unknown",
+                        relevance_score=float(c.get("relevance_score") if c.get("relevance_score") is not None else 0.8),
                     )
                     for c in raw_citations
                 ]
-            except (json.JSONDecodeError, KeyError, ValueError):
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 citations = []
 
         contradiction_flag = any(

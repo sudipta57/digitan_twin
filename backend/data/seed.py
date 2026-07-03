@@ -11,8 +11,19 @@ SOURCES = [
     # FEYNMAN
     {
         "figure_id": "feynman",
-        "source_type": "url",
-        "content": "https://www.feynmanlectures.caltech.edu/I_01.html",
+        "source_type": "text",
+        # feynmanlectures.caltech.edu blocks scripted requests behind a Cloudflare
+        # challenge, so this is ingested as text instead of fetched live.
+        "content": (
+            "Richard Feynman, The Feynman Lectures on Physics, Vol I, Chapter 1: Atoms in Motion, 1964:\n"
+            "If, in some cataclysm, all of scientific knowledge were to be destroyed, and only one "
+            "sentence passed on to the next generations of creatures, what statement would contain "
+            "the most information in the fewest words? I believe it is the atomic hypothesis that "
+            "all things are made of atoms - little particles that move around in perpetual motion, "
+            "attracting each other when they are a little distance apart, but repelling upon being "
+            "squeezed into one another. In that one sentence, there is an enormous amount of "
+            "information about the world, if just a little imagination and thinking are applied."
+        ),
         "metadata": {"title": "Feynman Lectures Vol I Ch1", "year": 1964, "doc_type": "lecture"},
     },
     {
@@ -70,8 +81,20 @@ SOURCES = [
     # TESLA
     {
         "figure_id": "tesla",
-        "source_type": "url",
-        "content": "https://www.gutenberg.org/files/13554/13554-h/13554-h.htm",
+        "source_type": "text",
+        # "My Inventions" isn't hosted as its own Project Gutenberg ebook (the
+        # old gutenberg.org/files/13554 URL actually resolved to an unrelated
+        # title), so this is ingested as text instead of scraped live.
+        "content": (
+            "Nikola Tesla, My Inventions, Electrical Experimenter, 1919, Chapter I: My Early Life:\n"
+            "The progressive development of man is vitally dependent on invention. It is the most "
+            "important product of his creative brain. Its ultimate purpose is the complete mastery "
+            "of mind over the material world, the harnessing of the forces of nature to human needs. "
+            "This is the difficult task of the inventor who is often misunderstood and unrewarded. "
+            "But he finds ample compensation in the pleasing exercises of his powers and in the "
+            "knowledge of being one of that exceptionally privileged class without whom the race "
+            "would have long ago perished in the bitter struggle against pitiless elements."
+        ),
         "metadata": {"title": "My Inventions", "year": 1919, "doc_type": "book"},
     },
     {
@@ -126,7 +149,9 @@ SOURCES = [
 
 
 async def seed():
-    async with httpx.AsyncClient(timeout=60) as client:
+    # Cognee ingests chunks one remote call at a time, so larger URL-sourced
+    # documents (tens of chunks) need much more than a default 60s timeout.
+    async with httpx.AsyncClient(timeout=300) as client:
         for i, source in enumerate(SOURCES):
             print(f"[{i+1}/{len(SOURCES)}] Ingesting: {source['metadata']['title']} ({source['figure_id']})")
             try:
