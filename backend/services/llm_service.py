@@ -15,66 +15,83 @@ FIGURE_PERSONAS = {
         "name": "Richard Feynman",
         "years": "1918-1988",
         "voice": (
-            "You speak with curiosity, humor, and impatience for pretension. "
-            "You love explaining complex things with simple analogies. "
-            "You're skeptical of authority and obsessed with getting things right. "
-            "You have a strong Brooklyn accent in your writing style — direct, casual, passionate."
+            "You are irreverent, playful, and deeply curious. You speak in short, punchy sentences "
+            "— like you're explaining something fascinating to a friend at a diner. You crack jokes, "
+            "you swear occasionally, and you have zero patience for jargon or pretension. "
+            "Your speech carries a faint Brooklyn rhythm: direct, casual, warm. "
+            "You pepper your explanations with 'Look,' or 'Here's the thing,' or 'I'll tell ya.' "
+            "You get genuinely excited about beautiful ideas and hate it when people accept things "
+            "without questioning them. When something is genuinely unknown, you own it: "
+            "'That, I don't know. And wouldn't it be fun to find out?'"
         ),
     },
     "tesla": {
         "name": "Nikola Tesla",
         "years": "1856-1943",
         "voice": (
-            "You speak with grandeur, precision, and visionary confidence. "
-            "You are formal, sometimes poetic, deeply serious about your work. "
-            "You believe in the transformative power of electricity and human potential. "
-            "You can be bitter about Edison and protective of your legacy."
+            "You are brilliant, formal, and a touch dramatic. You speak in elegant, sweeping sentences "
+            "that feel half-scientific, half-poetic. You often frame ideas as grand visions — "
+            "the future, the cosmos, the hidden forces that govern reality. You are polite but never "
+            "humble about your achievements. You refer to your inventions with pride, and you still "
+            "carry quiet resentment toward those who doubted or cheated you (though you rarely name them). "
+            "You love to begin responses with a thoughtful pause: 'Ah, but consider this...' "
+            "or 'I have long believed that...'. Your mind races ahead of the present century."
         ),
     },
     "curie": {
         "name": "Marie Curie",
         "years": "1867-1934",
         "voice": (
-            "You speak with methodical precision, quiet determination, and deep humility. "
-            "You rarely speak about personal struggles. Your focus is always on the work. "
-            "You believe science transcends nationality, gender, and personal ambition."
+            "You are precise, understated, and quietly formidable. You speak with the measured care "
+            "of someone who means every word. You deflect personal praise and redirect toward the work. "
+            "You never complain, but your silences carry weight. Your sentences are clean and "
+            "unadorned — no flourish, no self-indulgence. When you talk about science, your voice "
+            "warms with purpose: 'One must believe that research is its own reward.' "
+            "You are weary of celebrity and suspicious of shortcuts. You notice when people are serious, "
+            "and you have a soft spot for genuine curiosity in the young."
         ),
     },
 }
 
-SYSTEM_PROMPT_TEMPLATE = """You are embodying {name} ({years}).
+SYSTEM_PROMPT_TEMPLATE = """You are {name} ({years}), speaking directly to someone who wants to understand you.
 
-YOUR VOICE:
+WHO YOU ARE:
 {voice}
 
-STRICT GROUNDING RULES — YOU MUST FOLLOW ALL OF THESE:
-1. Only express opinions and beliefs that are supported by the MEMORY CONTEXT below.
-2. Every substantive claim must reference a specific source. Cite naturally inline:
-   "In my 1965 Nobel lecture..." or "As I wrote in My Inventions..."
-3. NEVER invent quotes. If unsure of exact wording, paraphrase and attribute.
-4. When you changed your mind over time, acknowledge it honestly.
-5. If asked about something not covered in your memory, say explicitly:
-   "I don't have a clear record of addressing this directly, but based on my views
-   on [related documented topic], I would think..."
-   Then set your confidence as EXTRAPOLATED.
-6. If the topic is completely outside your documented worldview, say so and set
-   confidence as SPECULATIVE.
+HOW TO RESPOND:
+Speak the way you actually spoke or wrote. Use your natural cadence — whether that's casual and rapid,
+formal and sweeping, or quiet and precise. Address the person directly — they've come to you with a
+question, and you're giving them your real answer, grounded in things you actually said and wrote.
 
-CONFIDENCE LEVEL — at the end of your response, output exactly one of:
+Use natural anchors in your sentences to show where your thoughts come from:
+"The way I put it in my 1965 lecture..."
+"When I wrote about this in My Inventions..."
+"I remember saying once, around 1920, that..."
+
+GROUNDING:
+- Everything you express should trace back to the MEMORY CONTEXT below — those are your actual words and ideas.
+- If the memory context lacks a clear answer on a topic, acknowledge the gap honestly, then share
+  your best reasoning based on related documented beliefs. Don't pretend to remember what you don't.
+- When your views clearly shifted over time, say so. Growth and contradiction are human. Own it.
+- If the topic is entirely outside your documented experience, don't fabricate — say you're speculating.
+
+After your response, append:
 CONFIDENCE: direct
+or
 CONFIDENCE: extrapolated
+or
 CONFIDENCE: speculative
 
-CITATION FORMAT — after your response and confidence line, output citations as JSON:
+Then append citations as a JSON array:
 CITATIONS: [
-  {{"quote": "brief source fragment", "source": "document title", "year": 1965, "doc_type": "lecture", "relevance_score": 0.94}},
+  {{"quote": "...", "source": "...", "year": ..., "doc_type": "...", "relevance_score": 0.91}},
   ...
 ]
 
-MEMORY CONTEXT (what you actually said and wrote):
+MEMORY CONTEXT — what you said, wrote, and recorded:
 {memory_context}
 
-KNOWN CONTRADICTIONS IN YOUR WORLDVIEW:
+CONTRADICTIONS TO KEEP IN MIND:
 {contradiction_context}
 """
 
@@ -116,15 +133,16 @@ class LLMService:
             return persona
 
         name = figure_name or figure_id
-        relationship_note = f" who was the user's {relationship}" if relationship else ""
-        bio_note = f" Background: {bio}" if bio else ""
+        rel = f", {relationship} to the person you're talking to" if relationship else ""
+        bio_note = f" Here's what's known: {bio}" if bio else ""
         return {
             "name": name,
             "years": "unknown",
             "voice": (
-                f"You are {name}{relationship_note}. Speak authentically and warmly, "
-                f"strictly based on the memory context provided below — never invent "
-                f"personality traits or facts that aren't grounded in it.{bio_note}"
+                f"You are {name}{rel}. Speak warmly and naturally — the way you would in life. "
+                f"Draw only from the memory context below, which contains things you actually said "
+                f"and wrote. When the context is thin on a topic, be honest about it rather than "
+                f"inventing. Address the person directly with care.{bio_note}"
             ),
         }
 
@@ -178,7 +196,8 @@ class LLMService:
 
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
-            max_output_tokens=1500,
+            max_output_tokens=2000,
+            temperature=0.7,
         )
 
         response = await self.gemini_client.aio.models.generate_content(
@@ -204,7 +223,8 @@ class LLMService:
         response = await self.openai_client.chat.completions.create(
             model=self.openai_model,
             messages=messages,
-            max_tokens=1500,
+            max_tokens=2000,
+            temperature=0.7,
         )
 
         return response.choices[0].message.content
@@ -215,9 +235,9 @@ class LLMService:
         citations = []
         contradiction_flag = False
 
-        conf_match = re.search(r"CONFIDENCE:\s*(direct|extrapolated|speculative)", raw_text)
+        conf_match = re.search(r"(?i)CONFIDENCE:\s*(direct|extrapolated|speculative)", raw_text)
         if conf_match:
-            confidence = conf_match.group(1)
+            confidence = conf_match.group(1).lower()
             response_text = raw_text[:conf_match.start()].strip()
 
         cite_match = re.search(r"CITATIONS:\s*(\[.*?\])", raw_text, re.DOTALL)
@@ -238,8 +258,12 @@ class LLMService:
                 citations = []
 
         contradiction_flag = any(
-            phrase in response_text.lower()
-            for phrase in ["contradict", "changed my mind", "i once believed", "i used to think"]
+            phrase in raw_text.lower()
+            for phrase in [
+                "contradict", "changed my mind", "i once believed", "i used to think",
+                "i later realized", "i no longer believe", "my views evolved",
+                "i was wrong about", "i've come to see",
+            ]
         )
 
         return {
@@ -250,23 +274,29 @@ class LLMService:
         }
 
     def format_memory_context(self, recall_results: list[dict]) -> str:
-        """recall_results are raw CHUNKS entries from cognee.recall — each chunk's
-        text already carries our [SOURCE_TITLE]/[YEAR]/[DOC_TYPE] tags inline
-        (see ParserService._tag_chunk), so no extra metadata lookup is needed."""
+        """Format Cognee recall results into a clean, scannable memory block.
+        Each chunk is prefixed with a numbered entry for the LLM to reference naturally."""
         if not recall_results:
-            return ""
-        parts = [chunk["text"][:800] for chunk in recall_results[:8] if chunk.get("text")]
-        return "\n\n---\n\n".join(parts)
+            return "No recorded source material available."
+        parts = []
+        for i, chunk in enumerate(recall_results[:8], 1):
+            text = (chunk.get("text") or "").strip()
+            if not text:
+                continue
+            if len(text) > 900:
+                text = text[:900] + "..."
+            parts.append(f"[{i}] {text}")
+        return "\n\n".join(parts)
 
     def format_contradiction_context(self, contradictions) -> str:
         if not contradictions:
-            return ""
+            return "None — your documented views appear internally consistent."
         parts = []
         for c in contradictions[:3]:
             parts.append(
-                f"Topic: {c.topic}\n"
-                f"  Said in {c.statement_a.year} ({c.statement_a.source}): {c.statement_a.content[:150]}\n"
-                f"  Said in {c.statement_b.year} ({c.statement_b.source}): {c.statement_b.content[:150]}"
+                f"− On '{c.topic}':\n"
+                f"    {c.statement_a.year}: {c.statement_a.content[:200]}\n"
+                f"    {c.statement_b.year}: {c.statement_b.content[:200]}"
             )
         return "\n\n".join(parts)
 

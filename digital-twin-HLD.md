@@ -3,7 +3,7 @@
 > **Hackathon:** WeMakeDevs × Cognee — "The Hangover Part AI: Where's My Context?"
 > **Track:** Best Use of Cognee Cloud (iPhone 17 prize)
 > **Team Size:** 2
-> **Stack:** FastAPI · React + TypeScript · Cognee Cloud · Claude API · Railway · Vercel
+> **Stack:** FastAPI · React + TypeScript · Cognee Cloud · Gemini API · Railway · Vercel
 
 ---
 
@@ -96,7 +96,7 @@ Every conversation response is:
 └──────────────────────────────────────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼───────────────────────────────────┐
-│                         LLM (Claude API)                             │
+│                         LLM (Gemini API)                            │
 │                                                                      │
 │  Receives: figure persona + cognee recall results                    │
 │            + contradiction data + conversation history               │
@@ -340,7 +340,7 @@ All Cognee Cloud interactions. Dataset isolation enforced by naming convention:
 Ownership validated before any personal recall/ingest/forget operation.
 
 ### LLMService
-Builds the Claude system prompt, calls the API, and parses the structured response (confidence level + citation JSON). Prompt grounding rules are non-negotiable — no weakening.
+Builds the Gemini system prompt, calls the API, and parses the structured response (confidence level + citation JSON). Prompt grounding rules are non-negotiable — no weakening.
 
 ### ParserService
 Routes by source type: PDF → pypdf, URL → httpx + BeautifulSoup, plain text → direct chunking, WhatsApp → custom `.txt` parser (strips timestamps and "sender:" prefixes, extracts message content only).
