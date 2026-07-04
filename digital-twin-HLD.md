@@ -13,14 +13,22 @@ Existing "talk to historical figures" AI tools are fundamentally broken — they
 
 The real problem: **a human's beliefs are a graph, not a document.** They contradict themselves. They evolve over decades. They have strong opinions on some topics and vague hunches on others. Flat RAG over PDFs loses all of this structure.
 
+This problem isn't limited to historical figures. People lose loved ones every day — grandparents, parents, friends — and with them, decades of wisdom, stories, and personality. There is no way to revisit a conversation you never had.
+
 ---
 
 ## 2. Solution Overview
 
-A source-grounded memory system that ingests everything a historical figure ever wrote, said, or published — and builds a **hybrid graph-vector knowledge store** of their actual documented worldview using Cognee Cloud.
+A source-grounded memory system that ingests everything a person ever wrote, said, or published — and builds a **hybrid graph-vector knowledge store** of their actual documented worldview using Cognee Cloud.
 
-Users converse with the figure in natural language. Every response is:
-- Grounded in real, ingested source material
+Two modes:
+
+**Public Figures** — pre-ingested historical figures (Feynman, Tesla, Curie) available to all users without login. Demonstrates the concept instantly.
+
+**Personal Twins** — users upload their own source material (WhatsApp exports, letters, PDFs, diary entries, blog URLs) to build a private memory graph of someone they knew. Auth-gated. Completely private per user.
+
+Every conversation response is:
+- Grounded in real ingested source material
 - Cited with exact source, year, and document
 - Honest about contradictions across time
 - Transparent when extrapolating vs directly quoting
@@ -30,286 +38,348 @@ Users converse with the figure in natural language. Every response is:
 ## 3. System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        FRONTEND (React + TS)                    │
-│                                                                 │
-│   ┌──────────────┐   ┌────────────────────┐   ┌─────────────┐  │
-│   │ Figure       │   │ Chat Interface     │   │Contradiction│  │
-│   │ Selector     │   │                    │   │Log Panel    │  │
-│   │ + Topic Map  │   │ Messages           │   │             │  │
-│   │              │   │ Citation Cards     │   │Timeline of  │  │
-│   │ Feynman      │   │ Confidence Badge   │   │belief shifts│  │
-│   │ Tesla        │   │ Source Drawer      │   │             │  │
-│   │ Curie        │   │                    │   │             │  │
-│   └──────────────┘   └────────────────────┘   └─────────────┘  │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ HTTPS REST
-┌──────────────────────────────▼──────────────────────────────────┐
-│                        BACKEND (FastAPI)                        │
-│                                                                 │
-│  ┌─────────────────┐   ┌──────────────────┐  ┌──────────────┐  │
-│  │  Ingest Router  │   │  Chat Router     │  │ Graph Router │  │
-│  │  POST /ingest   │   │  POST /chat      │  │ GET /topics  │  │
-│  │                 │   │                  │  │ GET /contra  │  │
-│  │  - PDF parser   │   │  - Prompt builder│  │ -dictions    │  │
-│  │  - URL scraper  │   │  - Claude caller │  │              │  │
-│  │  - Text chunker │   │  - Citation      │  │              │  │
-│  │  - Metadata tag │   │    extractor     │  │              │  │
-│  └────────┬────────┘   └────────┬─────────┘  └──────┬───────┘  │
-│           │                    │                    │           │
-│  ┌────────▼────────────────────▼────────────────────▼────────┐  │
-│  │                    Service Layer                          │  │
-│  │   CogneeService · LLMService · ParserService             │  │
-│  └────────────────────────────┬──────────────────────────────┘  │
-└───────────────────────────────┼─────────────────────────────────┘
-                                │ Cognee Python SDK
-┌───────────────────────────────▼─────────────────────────────────┐
-│                        COGNEE CLOUD                             │
-│                                                                 │
-│   remember()  →  Ingests source text into knowledge graph       │
-│   recall()    →  Graph traversal + semantic vector search       │
-│   improve()   →  Re-weights nodes, surfaces contradictions      │
-│   forget()    →  Removes disputed or misattributed sources      │
-│                                                                 │
-│   One isolated dataset per figure (feynman / tesla / curie)     │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-┌───────────────────────────────▼─────────────────────────────────┐
-│                      CLAUDE API (Anthropic)                     │
-│                                                                 │
-│   Receives: figure persona + cognee recall results              │
-│             + contradiction data + conversation history         │
-│   Produces: grounded response in figure's voice + citations     │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         FRONTEND (React + TS)                        │
+│                                                                      │
+│  ┌─────────────────┐  ┌──────────────────────┐  ┌─────────────────┐ │
+│  │ Figure Selector │  │   Chat Interface     │  │ Contradiction   │ │
+│  │                 │  │                      │  │ Log Panel       │ │
+│  │ Public Figures  │  │ Messages             │  │                 │ │
+│  │ ─ Feynman       │  │ Citation Cards       │  │ Belief Timeline │ │
+│  │ ─ Tesla         │  │ Confidence Badge     │  │ Tension Meter   │ │
+│  │ ─ Curie         │  │ Source Drawer        │  │                 │ │
+│  │                 │  │                      │  │                 │ │
+│  │ My Twins        │  │                      │  │                 │ │
+│  │ ─ [user list]   │  │                      │  │                 │ │
+│  │ ─ + Create New  │  │                      │  │                 │ │
+│  └─────────────────┘  └──────────────────────┘  └─────────────────┘ │
+└─────────────────────────────────┬────────────────────────────────────┘
+                                  │ HTTPS REST
+┌─────────────────────────────────▼────────────────────────────────────┐
+│                          BACKEND (FastAPI)                           │
+│                                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────┐  │
+│  │ Auth Router  │  │ Ingest Router│  │ Chat Router  │  │ Graph   │  │
+│  │ POST /auth/  │  │ POST /ingest │  │ POST /chat   │  │ Router  │  │
+│  │ google       │  │              │  │              │  │         │  │
+│  │ POST /auth/  │  │ - PDF parser │  │ - Prompt     │  │ GET     │  │
+│  │ logout       │  │ - URL scraper│  │   builder    │  │ /topics │  │
+│  │ GET  /auth/  │  │ - TXT parser │  │ - LLM caller │  │         │  │
+│  │ me           │  │ - Chunker    │  │ - Citation   │  │ GET     │  │
+│  └──────────────┘  │ - Meta tagger│  │   extractor  │  │ /contra │  │
+│                    └──────────────┘  └──────────────┘  │ -dicts  │  │
+│                                                         └─────────┘  │
+│  ┌──────────────┐                                                     │
+│  │ Figure Router│                                                     │
+│  │ GET  /figures│  (list public + user's private)                    │
+│  │ POST /figures│  (create custom twin)                              │
+│  │ DELETE /fig  │  (delete user's twin)                              │
+│  └──────────────┘                                                     │
+│                                                                      │
+│  ┌───────────────────────────────────────────────────────────────┐   │
+│  │                        Service Layer                         │   │
+│  │  CogneeService · LLMService · ParserService · AuthService    │   │
+│  └───────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │ Cognee Python SDK
+┌──────────────────────────────────▼───────────────────────────────────┐
+│                           COGNEE CLOUD                               │
+│                                                                      │
+│  remember()  →  Ingests source text into knowledge graph             │
+│  recall()    →  Graph traversal + semantic vector search             │
+│  improve()   →  Re-weights nodes, surfaces contradictions            │
+│  forget()    →  Removes disputed or misattributed sources            │
+│                                                                      │
+│  Dataset naming:                                                     │
+│  Public figures  →  figure_feynman / figure_tesla / figure_curie    │
+│  Personal twins  →  figure_{user_id}_{slug}                         │
+└──────────────────────────────────────────────────────────────────────┘
+                                   │
+┌──────────────────────────────────▼───────────────────────────────────┐
+│                         LLM (Claude API)                             │
+│                                                                      │
+│  Receives: figure persona + cognee recall results                    │
+│            + contradiction data + conversation history               │
+│  Produces: grounded response in figure's voice + citations           │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. Data Flow
+## 4. User Modes
 
-### 4.1 Ingestion Flow
+### 4.1 Public Mode (No Login Required)
+- Three pre-ingested historical figures available immediately
+- Full chat + citations + contradiction log
+- Zero friction — open the app and start talking
+
+### 4.2 Personal Twin Mode (Login Required)
+- User signs in via Google OAuth
+- Creates a custom twin: name, years, relationship, short bio
+- Uploads source material in any supported format
+- Twin is private — only visible and accessible to that user
+- Multiple twins supported per user (e.g. grandfather + grandmother)
+
+---
+
+## 5. Data Flow
+
+### 5.1 Ingestion Flow (Public + Personal)
 
 ```
-Source Material (PDF / URL / Text)
+Source Material (PDF / TXT / URL / WhatsApp export / plain text)
         │
         ▼
 ParserService
+  - Detect format and route to correct parser
   - Extract raw text
   - Chunk into ~500 token segments
-  - Tag each chunk with: {figure_id, source_title, year, doc_type}
+  - Tag each chunk: {figure_id, user_id, source_title, year, doc_type}
         │
         ▼
-CogneeService.ingest_source()
-  - Prepend metadata tags to each chunk
-  - Call cognee.remember(chunk, dataset_name=figure_id)
+CogneeService.ingest_chunks()
+  - Dataset name: figure_{figure_id} (public) or figure_{user_id}_{slug} (personal)
+  - Call cognee.remember(tagged_chunk, dataset_name=...)
   - Cognee builds: vector embeddings + graph nodes + edges
         │
         ▼
 Cognee Cloud Knowledge Graph
-  - Nodes: concepts, opinions, events, people
+  - Nodes: concepts, opinions, events, people, memories
   - Edges: relationships, contradictions, temporal evolution
-  - Metadata: source, year, confidence level
+  - Metadata: source, year, doc_type, user_id
 ```
 
-### 4.2 Chat Flow
+### 5.2 Chat Flow
 
 ```
-User message ("What did Feynman think about AI?")
+User message + figure_id + user_id (if personal twin)
         │
         ▼
-POST /chat  {figure_id, message, conversation_history}
+POST /chat → validate figure ownership (personal) or skip (public)
         │
         ▼
 CogneeService.query_figure()
-  - cognee.recall(question, dataset_name=figure_id)
+  - cognee.recall(question, dataset_name=correct_dataset)
   - Returns: relevant graph nodes + source citations
         │
         ▼
 CogneeService.get_contradictions()
-  - cognee.improve(dataset_name=figure_id)
-  - cognee.recall("contradictions about [topic]")
+  - cognee.improve() then cognee.recall("contradictions...")
         │
         ▼
-LLMService.build_prompt()
-  - System: figure persona + strict grounding rules
-  - Context: cognee recall results + contradiction data
-  - History: last N conversation turns
+LLMService.generate_response()
+  - System: figure persona + grounding rules
+  - Context: recall results + contradiction data
+  - History: last 6 conversation turns
         │
         ▼
-Claude API
-  - Responds in figure's voice
-  - Cites sources inline
-  - Surfaces contradictions honestly
-  - Flags when extrapolating
+Response → {response, citations, sources_used, confidence, contradiction_flag}
+```
+
+### 5.3 Personal Twin Creation Flow
+
+```
+User fills creation form → POST /figures
+  {name, years, relationship, bio, is_public: false}
         │
         ▼
-Response to Frontend
-  {
-    response: string,
-    citations: [{quote, source, year, relevance_score}],
-    sources_used: number,
-    confidence: "direct" | "extrapolated" | "speculative"
-  }
+Backend generates figure_slug from name
+Stores figure metadata in memory (in-process dict, MVP)
+Returns figure_id = f"{user_id}_{slug}"
+        │
+        ▼
+User uploads files → POST /ingest
+  {figure_id, source_type, content, metadata}
+  Repeats for each file/URL
+        │
+        ▼
+Each upload → ParserService → CogneeService.ingest_chunks()
+  dataset_name = f"figure_{user_id}_{slug}"
+        │
+        ▼
+Twin ready — appears in user's "My Twins" sidebar list
 ```
 
 ---
 
-## 5. API Contract
+## 6. API Contract
 
-### POST `/ingest`
+### Auth
+
+#### POST `/auth/google`
+```json
+Request:  { "token": "<google_id_token>" }
+Response: { "user_id": "abc123", "email": "user@gmail.com", "name": "Sudipta" }
+```
+Sets an HTTP-only session cookie on response.
+
+#### GET `/auth/me`
+```json
+Response: { "user_id": "abc123", "email": "user@gmail.com", "name": "Sudipta" }
+```
+Returns 401 if not authenticated.
+
+#### POST `/auth/logout`
+```json
+Response: { "status": "logged_out" }
+```
+
+---
+
+### Figures
+
+#### GET `/figures`
+```json
+Response:
+{
+  "public": [
+    { "id": "feynman", "name": "Richard Feynman", "years": "1918–1988",
+      "description": "...", "is_public": true }
+  ],
+  "personal": [
+    { "id": "abc123_grandpa_rajan", "name": "Grandpa Rajan", "years": "1940–2021",
+      "relationship": "Grandfather", "is_public": false, "source_count": 5 }
+  ]
+}
+```
+Personal list only returned if authenticated.
+
+#### POST `/figures`
 ```json
 Request:
 {
-  "figure_id": "feynman",
-  "source_type": "pdf" | "url" | "text",
-  "content": "<base64 or string or url>",
-  "metadata": {
-    "title": "Surely You're Joking Mr. Feynman",
-    "year": 1985,
-    "doc_type": "book" | "interview" | "lecture" | "letter"
-  }
+  "name": "Grandpa Rajan",
+  "years_from": 1940,
+  "years_to": 2021,
+  "relationship": "Grandfather",
+  "bio": "Engineer from Kolkata, wrote letters every week"
 }
-
 Response:
 {
-  "status": "success",
-  "nodes_created": 142,
-  "topics_detected": ["physics", "education", "government"],
-  "processing_time_ms": 3200
+  "figure_id": "abc123_grandpa_rajan",
+  "slug": "grandpa_rajan",
+  "dataset_name": "figure_abc123_grandpa_rajan"
 }
 ```
 
-### POST `/chat`
+#### DELETE `/figures/{figure_id}`
+Deletes figure metadata and calls `cognee.forget()` on the dataset. Auth-gated — user can only delete their own.
+
+---
+
+### Ingest
+
+#### POST `/ingest`
 ```json
 Request:
 {
-  "figure_id": "feynman",
-  "message": "What do you think about AI replacing scientists?",
-  "conversation_history": [
-    {"role": "user", "content": "..."},
-    {"role": "assistant", "content": "..."}
-  ]
+  "figure_id": "abc123_grandpa_rajan",
+  "source_type": "pdf" | "url" | "text" | "whatsapp",
+  "content": "<base64 for pdf, url string, raw text, or whatsapp .txt content>",
+  "metadata": {
+    "title": "Letters to Father 1987",
+    "year": 1987,
+    "doc_type": "letter"
+  }
 }
-
 Response:
 {
-  "response": "I'd be skeptical of any system that produces answers without...",
+  "status": "success",
+  "nodes_created": 87,
+  "topics_detected": ["family", "work", "advice"],
+  "processing_time_ms": 2100
+}
+```
+
+---
+
+### Chat
+
+#### POST `/chat`
+```json
+Request:
+{
+  "figure_id": "abc123_grandpa_rajan",
+  "message": "What did you think about hard work?",
+  "conversation_history": [...]
+}
+Response:
+{
+  "response": "Work is not something you do to survive...",
   "citations": [
-    {
-      "quote": "original source fragment",
-      "source": "Nobel Lecture 1965",
-      "year": 1965,
-      "doc_type": "lecture",
-      "relevance_score": 0.94
-    }
+    { "quote": "source fragment", "source": "Letter to Father 1987",
+      "year": 1987, "doc_type": "letter", "relevance_score": 0.91 }
   ],
-  "sources_used": 4,
+  "sources_used": 3,
   "confidence": "direct",
   "contradiction_flag": false
 }
 ```
 
-### GET `/contradictions/{figure_id}`
-```json
-Response:
-{
-  "contradictions": [
-    {
-      "topic": "collaboration vs solo work",
-      "statement_a": {
-        "content": "Science is best pursued in solitude...",
-        "source": "Century Magazine 1892",
-        "year": 1892
-      },
-      "statement_b": {
-        "content": "Edison's team approach produced remarkable results...",
-        "source": "My Inventions 1919",
-        "year": 1919
-      },
-      "tension_score": 0.87,
-      "resolution": "unresolved" | "evolved" | "context_dependent"
-    }
-  ]
-}
-```
+---
 
-### GET `/topics/{figure_id}`
-```json
-Response:
-{
-  "topics": [
-    { "name": "Quantum Mechanics", "strength": 0.95, "source_count": 23 },
-    { "name": "Education Reform", "strength": 0.78, "source_count": 11 },
-    { "name": "Government & NASA", "strength": 0.45, "source_count": 4 }
-  ]
-}
-```
+### Graph
 
-### DELETE `/source`
-```json
-Request:
-{
-  "figure_id": "feynman",
-  "source_title": "disputed_interview_1990"
-}
-
-Response:
-{
-  "status": "forgotten",
-  "nodes_removed": 18
-}
-```
+#### GET `/contradictions/{figure_id}`
+#### GET `/topics/{figure_id}`
+#### DELETE `/source`
+(Unchanged from original HLD — see Section 5 of original for full shapes)
 
 ---
 
-## 6. Core Services
+## 7. Core Services
+
+### AuthService
+Handles Google OAuth token verification, session cookie management, and user identity resolution. Returns a `user_id` used as namespace prefix for all personal twin datasets.
 
 ### CogneeService
-Owns all interactions with Cognee Cloud. Each figure gets an isolated dataset to prevent cross-figure contamination.
+All Cognee Cloud interactions. Dataset isolation enforced by naming convention:
+- Public: `figure_feynman`
+- Personal: `figure_{user_id}_{slug}`
 
-```python
-class CogneeService:
-    async def ingest_source(figure_id, content, metadata)
-      # Tags content with figure/source metadata
-      # Calls cognee.remember(tagged_content, dataset_name=figure_id)
-
-    async def query_figure(figure_id, question)
-      # Calls cognee.recall(question, dataset_name=figure_id)
-      # Returns graph nodes + citations
-
-    async def get_contradictions(figure_id)
-      # Calls cognee.improve(dataset_name=figure_id)
-      # Queries for tension nodes in the graph
-
-    async def forget_source(figure_id, source_title)
-      # Calls cognee.forget(dataset=f"{figure_id}_{source_title}")
-```
+Ownership validated before any personal recall/ingest/forget operation.
 
 ### LLMService
-Builds the system prompt and calls Claude. The prompt is the critical piece — it enforces grounding and citation behavior.
-
-```
-SYSTEM PROMPT RULES:
-1. Only express opinions grounded in provided memory context
-2. Every claim must cite a specific source from context
-3. Surface contradictions honestly — never hide belief evolution
-4. When extrapolating, explicitly flag it as such
-5. Never invent quotes — paraphrase with attribution if unsure
-6. Cite sources naturally inline: "In my 1965 Nobel lecture..."
-```
+Builds the Claude system prompt, calls the API, and parses the structured response (confidence level + citation JSON). Prompt grounding rules are non-negotiable — no weakening.
 
 ### ParserService
-Handles raw source ingestion: PDF text extraction, URL scraping, plain text chunking. Outputs tagged chunks ready for Cognee ingestion.
+Routes by source type: PDF → pypdf, URL → httpx + BeautifulSoup, plain text → direct chunking, WhatsApp → custom `.txt` parser (strips timestamps and "sender:" prefixes, extracts message content only).
 
 ---
 
-## 7. Frontend Component Tree
+## 8. WhatsApp Export Parser
+
+WhatsApp chat exports are `.txt` files with this format:
+```
+12/25/2021, 10:34 AM - Grandpa Rajan: Beta, always wake up early.
+12/25/2021, 10:35 AM - You: Why dada?
+12/25/2021, 10:36 AM - Grandpa Rajan: The world belongs to those who show up first.
+```
+
+Parser behavior:
+- Accept the figure's name at parse time (provided by user during upload)
+- Extract only messages sent by that name
+- Strip timestamps and sender prefix
+- Treat each message as a text chunk
+- Tag with `doc_type: "whatsapp"` and `year` derived from timestamps
+
+This makes personal twins incredibly easy to build — most people have years of WhatsApp history with loved ones.
+
+---
+
+## 9. Frontend Component Tree
 
 ```
 App
-├── FigureSelector
-│   ├── FigureCard (Feynman / Tesla / Curie)
-│   └── TopicMap (D3 bubble chart of belief clusters)
+├── AuthProvider (Google OAuth context)
+│
+├── Sidebar
+│   ├── PublicFigures
+│   │   └── FigureCard × 3 (Feynman / Tesla / Curie)
+│   ├── MyTwins (auth-gated)
+│   │   ├── PersonalFigureCard × N
+│   │   └── CreateTwinButton → CreateTwinModal
+│   └── LoginButton / UserAvatar
 │
 ├── ChatWindow
 │   ├── MessageList
@@ -317,69 +387,90 @@ App
 │   │   └── AssistantMessage
 │   │       ├── ResponseText
 │   │       ├── CitationCards (expandable)
-│   │       ├── ConfidenceBadge (direct / extrapolated)
-│   │       └── SourceCount ("drawn from 4 sources")
+│   │       ├── ConfidenceBadge (direct / extrapolated / speculative)
+│   │       └── SourceCount
 │   └── MessageInput
 │
-└── ContradictionLog (right panel)
-    ├── ContradictionCard
-    │   ├── TopicLabel
-    │   ├── StatementA (with source + year)
-    │   ├── StatementB (with source + year)
-    │   └── TensionMeter
-    └── TimelineView (belief evolution over years)
+├── ContradictionLog (right panel)
+│   ├── ContradictionCard × N
+│   │   ├── TopicLabel
+│   │   ├── StatementA + StatementB
+│   │   └── TensionMeter
+│   └── TimelineView
+│
+└── CreateTwinModal
+    ├── Step 1: BasicInfoForm (name, years, relationship, bio)
+    ├── Step 2: UploadForm
+    │   ├── FileDropzone (PDF, TXT, WhatsApp .txt)
+    │   ├── URLInput
+    │   └── TextPasteArea
+    └── Step 3: ProcessingView (progress per file)
 ```
 
 ---
 
-## 8. Pre-Ingested Source Corpus
+## 10. Pre-Ingested Public Corpus
 
-All sources are public domain (pre-1928 or openly licensed by institutions).
+All sources public domain (pre-1928 or openly licensed).
 
 ### Richard Feynman
-| Source | Year | Type | Status |
-|--------|------|------|--------|
-| The Feynman Lectures on Physics | 1964 | Lecture | Free — Caltech |
-| Surely You're Joking Mr. Feynman (excerpts) | 1985 | Book | Key passages |
-| Nobel Prize Lecture | 1965 | Lecture | Public — Nobel Foundation |
-| Challenger Commission Testimony | 1986 | Gov. Document | Public domain |
-| Omni Magazine Interview | 1979 | Interview | Public |
+| Source | Year | Type |
+|--------|------|------|
+| Feynman Lectures Vol I Ch1 | 1964 | Lecture |
+| Nobel Prize Lecture | 1965 | Lecture |
+| Challenger Commission Testimony | 1986 | Testimony |
+| Omni Magazine Interview | 1979 | Interview |
 
 ### Nikola Tesla
-| Source | Year | Type | Status |
-|--------|------|------|--------|
-| My Inventions (Autobiography) | 1919 | Book | Full public domain |
-| The Problem of Increasing Human Energy | 1900 | Article | Public domain |
-| A New System of Alternating Current Motors | 1888 | Paper | Public domain |
-| Various Patent Descriptions | 1880s–1900s | Patents | Public domain |
+| Source | Year | Type |
+|--------|------|------|
+| My Inventions (Autobiography) | 1919 | Book |
+| The Problem of Increasing Human Energy | 1900 | Article |
+| A New System of Alternating Current Motors | 1888 | Paper |
+
+### Marie Curie
+| Source | Year | Type |
+|--------|------|------|
+| Autobiographical Notes | 1923 | Book |
+| Nobel Lecture (Chemistry) | 1911 | Lecture |
+| Pierre Curie (biography she wrote) | 1923 | Book |
 
 ---
 
-## 9. Confidence Levels
+## 11. Confidence Levels
 
-Every response carries a confidence badge based on how the answer was generated:
-
-| Level | Meaning | Display |
-|-------|---------|---------|
-| `direct` | Response drawn directly from ingested quotes | 🟢 Direct source |
-| `extrapolated` | Reasoning from related beliefs in the graph | 🟡 Extrapolated |
-| `speculative` | Topic not covered — AI reasoning from worldview patterns | 🔴 Speculative |
-
-This transparency is a core differentiator. The system is honest about what it knows vs what it's inferring.
+| Level | Meaning | Badge |
+|-------|---------|-------|
+| `direct` | Drawn from ingested source material | 🟢 Direct source |
+| `extrapolated` | Reasoned from related documented beliefs | 🟡 Extrapolated |
+| `speculative` | Topic not in corpus — reasoning from worldview patterns | 🔴 Speculative |
 
 ---
 
-## 10. Folder Structure
+## 12. Security & Privacy
+
+- Personal twins are completely private — dataset names include `user_id`, inaccessible without a valid session
+- All `/figures`, `/ingest`, `/chat` calls for personal twins validate session ownership before touching Cognee
+- No cross-user data sharing possible at the dataset level
+- Users can permanently delete their twin at any time via DELETE `/figures/{figure_id}` which calls `cognee.forget()`
+- No raw uploaded files are stored server-side — content is parsed in memory and discarded after Cognee ingestion
+
+---
+
+## 13. Folder Structure
 
 ```
 digital-twin/
 ├── backend/
 │   ├── main.py
 │   ├── routers/
+│   │   ├── auth.py
+│   │   ├── figures.py
 │   │   ├── ingest.py
 │   │   ├── chat.py
 │   │   └── graph.py
 │   ├── services/
+│   │   ├── auth_service.py
 │   │   ├── cognee_service.py
 │   │   ├── llm_service.py
 │   │   └── parser_service.py
@@ -388,20 +479,27 @@ digital-twin/
 │   ├── data/
 │   │   └── figures/
 │   │       ├── feynman/
-│   │       └── tesla/
+│   │       ├── tesla/
+│   │       └── curie/
 │   └── requirements.txt
 │
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── FigureSelector.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── FigureCard.tsx
 │   │   │   ├── ChatWindow.tsx
 │   │   │   ├── CitationCard.tsx
+│   │   │   ├── ConfidenceBadge.tsx
 │   │   │   ├── ContradictionLog.tsx
-│   │   │   └── TopicMap.tsx
+│   │   │   ├── CreateTwinModal.tsx
+│   │   │   └── UploadForm.tsx
 │   │   ├── hooks/
 │   │   │   ├── useChat.ts
-│   │   │   └── useFigure.ts
+│   │   │   ├── useFigure.ts
+│   │   │   └── useAuth.ts
+│   │   ├── context/
+│   │   │   └── AuthContext.tsx
 │   │   ├── types/
 │   │   │   └── index.ts
 │   │   ├── api/
@@ -415,82 +513,86 @@ digital-twin/
 
 ---
 
-## 11. Deployment Architecture
+## 14. Deployment Architecture
 
 ```
 Developer Machine
       │
       ├── git push → GitHub
       │
-      ├── Backend → Railway (auto-deploy from /backend)
-      │             FastAPI on port 8000
-      │             ENV: COGNEE_API_KEY, ANTHROPIC_API_KEY
+      ├── Backend → Railway
+      │   FastAPI on $PORT
+      │   ENV: COGNEE_API_KEY, ANTHROPIC_API_KEY,
+      │        GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+      │        SESSION_SECRET, ENVIRONMENT
       │
-      └── Frontend → Vercel (auto-deploy from /frontend)
-                    React SPA
-                    ENV: VITE_API_URL=https://your-app.railway.app
+      └── Frontend → Vercel
+          React SPA
+          ENV: VITE_API_URL, VITE_GOOGLE_CLIENT_ID
 ```
 
 ---
 
-## 12. Work Split (2 People)
+## 15. Work Split (2 People)
 
 | Task | Owner |
 |------|-------|
 | Cognee Cloud setup + dataset isolation | Backend Dev |
-| Ingest pipeline (PDF/URL/text parsing) | Backend Dev |
-| `/chat` endpoint + Claude prompt engineering | Backend Dev |
+| Auth service (Google OAuth + sessions) | Backend Dev |
+| Ingest pipeline (PDF/URL/text/WhatsApp) | Backend Dev |
+| `/chat` endpoint + LLM prompt engineering | Backend Dev |
 | Contradiction detection via `improve()` | Backend Dev |
-| `/topics` + `/contradictions` endpoints | Backend Dev |
-| Railway deployment + env config | Backend Dev |
-| React project scaffold + routing | Frontend Dev |
-| FigureSelector + TopicMap component | Frontend Dev |
-| ChatWindow + MessageList + CitationCards | Frontend Dev |
+| Figure management endpoints | Backend Dev |
+| Railway deployment | Backend Dev |
+| React scaffold + routing + AuthContext | Frontend Dev |
+| Sidebar (public figures + My Twins list) | Frontend Dev |
+| ChatWindow + CitationCards + ConfidenceBadge | Frontend Dev |
+| CreateTwinModal (3-step flow) | Frontend Dev |
+| UploadForm + file dropzone | Frontend Dev |
 | ContradictionLog panel | Frontend Dev |
-| API client + TypeScript types | Frontend Dev |
 | Vercel deployment | Frontend Dev |
-| Demo video recording | Both |
-| Blog post (side track) | Both |
-| Social posts (side track) | Both |
+| Demo video | Both |
+| Blog post | Both |
+| Social posts | Both |
 
 ---
 
-## 13. 7-Day Execution Plan
+## 16. 7-Day Execution Plan
 
 | Day | Backend | Frontend |
 |-----|---------|----------|
-| **Day 1** | Cognee Cloud setup, ingest Feynman corpus | Project scaffold, FigureSelector UI |
-| **Day 2** | `/chat` endpoint + Claude prompt + citations | ChatWindow + CitationCards (mocked) |
-| **Day 3** | Contradiction detection + `/contradictions` | ContradictionLog + TopicMap |
-| **Day 4** | `/topics` endpoint, metadata tagging | Wire real API, replace all mocks |
-| **Day 5** | Add Tesla corpus, edge case handling | Polish UI, loading states, errors |
-| **Day 6** | Railway deploy, stress test, README | Vercel deploy, cross-browser test |
-| **Day 7** | Blog post + OSS PR contributions | Demo video + social posts |
+| **Day 1** | Cognee setup, public figure ingest (Feynman+Tesla+Curie), `/health` | Scaffold, routing, Sidebar with public figures |
+| **Day 2** | `/chat` + LLM prompt + citation parsing | ChatWindow + CitationCards + ConfidenceBadge (mocked) |
+| **Day 3** | Google OAuth + sessions + figure ownership validation | AuthContext + LoginButton + CreateTwinModal Step 1 |
+| **Day 4** | `/figures` CRUD + WhatsApp parser + personal ingest | UploadForm + CreateTwinModal Steps 2–3 + My Twins list |
+| **Day 5** | Contradiction detection + `/topics` + edge case handling | ContradictionLog + wire all real API calls, replace mocks |
+| **Day 6** | Railway deploy + CORS update + stress test | Vercel deploy + cross-browser test + loading/error states |
+| **Day 7** | Blog post + OSS PR | Demo video + social posts |
 
 ---
 
-## 14. Judging Criteria Mapping
+## 17. Judging Criteria Mapping
 
 | Criterion | How This Project Scores |
 |-----------|------------------------|
-| **Potential Impact** | Genuine research/education utility — students, journalists, museums |
-| **Creativity** | Source-grounded contradiction-surfacing twin — nothing like it exists |
-| **Technical Excellence** | Graph traversal + vector search + citation extraction + confidence levels |
-| **Best Use of Cognee** | All 4 APIs used meaningfully: remember/recall/improve/forget |
-| **User Experience** | Single compelling UI — conversation + citations + contradiction log |
-| **Presentation** | Demo: type wrong claim → AI cites contradiction from 1892. Instant impact. |
+| **Potential Impact** | Historians, students, journalists — AND grieving families who want to preserve a loved one's voice |
+| **Creativity** | Only project combining source-grounded historical twins + personal memory upload |
+| **Technical Excellence** | Graph traversal + vector search + WhatsApp parser + auth + citation extraction |
+| **Best Use of Cognee** | All 4 APIs: remember/recall/improve/forget, across public and private isolated datasets |
+| **User Experience** | Zero-friction public demo + emotional personal twin creation flow |
+| **Presentation** | Demo arc: Feynman → "now upload your grandfather's WhatsApp" — room goes silent |
 
 ---
 
-## 15. The 60-Second Demo Script
+## 18. The 60-Second Demo Script
 
-1. Open app — Feynman's face, topic bubbles visible
-2. Ask: *"What did you think about education?"*
-3. Response appears with inline citations — room sees it's not hallucinated
-4. Ask: *"Did you ever contradict yourself on this?"*
-5. Contradiction log lights up — 1950 vs 1975 views side by side
-6. Ask something Feynman never addressed: *"What would you think about TikTok?"*
-7. AI reasons from his documented beliefs on attention and shallow entertainment
-8. Response flagged as 🟡 Extrapolated — transparent about the inference
+1. Open app — three historical figures visible, no login needed
+2. Click Feynman → ask *"What did you think about education?"*
+3. Response with inline citations — not hallucinated, room sees grounding
+4. Ask *"Did you ever contradict yourself?"* — contradiction log lights up
+5. Click **+ Create Twin** → fill name "Grandpa Rajan", years 1940–2021
+6. Upload a WhatsApp `.txt` export — processing bar fills
+7. Ask Grandpa Rajan: *"What do you think about hard work?"*
+8. Response grounded in his actual WhatsApp messages, cited by date
 
-**The moment that wins:** step 7. The AI doesn't invent an answer. It navigates the graph of what he actually valued and reasons from there. That's what Cognee's graph layer makes possible that flat RAG cannot.
+**The moment that wins:** step 7–8. Someone just talked to their grandfather. That's not a hackathon demo. That's a product.

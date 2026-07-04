@@ -1,19 +1,22 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from backend.models.schemas import ChatRequest, ChatResponse
 from backend.services.cognee_service import CogneeService
 from backend.services.llm_service import LLMService
+from backend.services import figure_store
+from backend.services.session import get_user_id
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 cognee_svc = CogneeService()
 llm_svc = LLMService()
 
-VALID_FIGURES = {"feynman", "tesla", "curie"}
-
 
 @router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    if request.figure_id not in VALID_FIGURES:
-        raise HTTPException(status_code=400, detail=f"Unknown figure: {request.figure_id}")
+async def chat(request: ChatRequest, http_request: Request):
+    user_id = get_user_id(http_request)
+    if not figure_store.can_access(request.figure_id, user_id):
+        raise HTTPException(status_code=403, detail="Access denied for this figure")
+
+    personal_figure = figure_store.get_figure(request.figure_id)
 
     try:
         recall_results = await cognee_svc.query_figure(
@@ -38,6 +41,9 @@ async def chat(request: ChatRequest):
             memory_context=memory_context,
             contradiction_context=contradiction_context,
             conversation_history=request.conversation_history,
+            figure_name=personal_figure.name if personal_figure else None,
+            relationship=personal_figure.relationship if personal_figure else None,
+            bio=personal_figure.description if personal_figure else None,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")

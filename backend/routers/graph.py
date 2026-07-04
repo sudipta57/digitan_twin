@@ -1,61 +1,22 @@
-from fastapi import APIRouter, HTTPException
-from backend.models.schemas import (
-    ContradictionsResponse,
-    TopicsResponse,
-    ForgetRequest,
-    ForgetResponse,
-)
+from fastapi import APIRouter, HTTPException, Request
+from backend.models.schemas import ContradictionsResponse, TopicsResponse, ForgetRequest, ForgetResponse
 from backend.services.cognee_service import CogneeService
+from backend.services import figure_store
+from backend.services.session import get_user_id
 
 router = APIRouter(tags=["graph"])
 cognee_svc = CogneeService()
 
-VALID_FIGURES = {"feynman", "tesla", "curie"}
 
-FIGURE_INFO = {
-    "feynman": {
-        "id": "feynman",
-        "name": "Richard Feynman",
-        "years": "1918-1988",
-        "description": "Theoretical physicist, Nobel laureate, Challenger investigator, eternal teacher.",
-        "portrait_url": "/portraits/feynman/portrait.svg",
-        "source_count": 5,
-    },
-    "tesla": {
-        "id": "tesla",
-        "name": "Nikola Tesla",
-        "years": "1856-1943",
-        "description": "Inventor of AC power, visionary engineer, dreamer of wireless energy.",
-        "portrait_url": "/portraits/tesla/portrait.svg",
-        "source_count": 4,
-    },
-    "curie": {
-        "id": "curie",
-        "name": "Marie Curie",
-        "years": "1867-1934",
-        "description": "Pioneer of radioactivity, first woman to win a Nobel Prize, twice.",
-        "portrait_url": "/portraits/curie/portrait.svg",
-        "source_count": 0,
-    },
-}
-
-
-@router.get("/figures")
-async def list_figures():
-    return {"figures": list(FIGURE_INFO.values())}
-
-
-@router.get("/figures/{figure_id}")
-async def get_figure(figure_id: str):
-    if figure_id not in VALID_FIGURES:
-        raise HTTPException(status_code=404, detail="Figure not found")
-    return FIGURE_INFO[figure_id]
+def _check_access(figure_id: str, request: Request) -> None:
+    user_id = get_user_id(request)
+    if not figure_store.can_access(figure_id, user_id):
+        raise HTTPException(status_code=403, detail="Access denied for this figure")
 
 
 @router.get("/contradictions/{figure_id}", response_model=ContradictionsResponse)
-async def get_contradictions(figure_id: str):
-    if figure_id not in VALID_FIGURES:
-        raise HTTPException(status_code=404, detail="Figure not found")
+async def get_contradictions(figure_id: str, request: Request):
+    _check_access(figure_id, request)
 
     try:
         contradictions = await cognee_svc.get_contradictions(figure_id)
@@ -66,9 +27,8 @@ async def get_contradictions(figure_id: str):
 
 
 @router.get("/topics/{figure_id}", response_model=TopicsResponse)
-async def get_topics(figure_id: str):
-    if figure_id not in VALID_FIGURES:
-        raise HTTPException(status_code=404, detail="Figure not found")
+async def get_topics(figure_id: str, request: Request):
+    _check_access(figure_id, request)
 
     try:
         topics = await cognee_svc.get_topics(figure_id)
@@ -79,9 +39,8 @@ async def get_topics(figure_id: str):
 
 
 @router.delete("/source", response_model=ForgetResponse)
-async def forget_source(request: ForgetRequest):
-    if request.figure_id not in VALID_FIGURES:
-        raise HTTPException(status_code=404, detail="Figure not found")
+async def forget_source(request: ForgetRequest, http_request: Request):
+    _check_access(request.figure_id, http_request)
 
     try:
         nodes_removed = await cognee_svc.forget_source(

@@ -1,4 +1,5 @@
-export type DocType = 'book' | 'interview' | 'lecture' | 'letter' | 'article' | 'paper' | 'testimony'
+export type DocType = 'book' | 'interview' | 'lecture' | 'letter' | 'article'
+  | 'paper' | 'testimony' | 'whatsapp' | 'diary'
 export type Confidence = 'direct' | 'extrapolated' | 'speculative'
 
 export interface Citation {
@@ -33,10 +34,27 @@ export interface Topic {
   source_count: number
 }
 
-export interface Figure {
+export interface FigureInfo {
   id: string
   name: string
   years: string
   description: string
-  portrait_url: string
+  portrait_url?: string
+  is_public: boolean
+  relationship?: string
+  source_count?: number
+}
+
+export interface UserInfo {
+  user_id: string
+  email: string
+  name: string
+}
+
+export interface CreateFigurePayload {
+  name: string
+  years_from: number
+  years_to?: number
+  relationship?: string
+  bio?: string
 }

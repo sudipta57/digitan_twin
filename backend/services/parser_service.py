@@ -17,12 +17,15 @@ class ParserService:
     def __init__(self):
         self.encoder = tiktoken.get_encoding("cl100k_base")
 
-    def parse(self, source_type: str, content: str, metadata: SourceMetadata) -> list[str]:
+    def parse(self, source_type: str, content: str, metadata: SourceMetadata,
+              whatsapp_sender_name: str | None = None) -> list[str]:
         """Entry point. Returns list of tagged text chunks ready for Cognee ingestion."""
         if source_type == "pdf":
             raw_text = self._parse_pdf(content)
         elif source_type == "url":
             raw_text = self._parse_url(content)
+        elif source_type == "whatsapp":
+            raw_text = self._parse_whatsapp(content, whatsapp_sender_name or "")
         else:
             raw_text = content
 
@@ -52,6 +55,26 @@ class ParserService:
 
         text = soup.get_text(separator="\n")
         return text
+
+    def _parse_whatsapp(self, content: str, sender_name: str) -> str:
+        """Extracts only the messages sent by `sender_name` from a WhatsApp .txt export,
+        stripping timestamps and the "sender:" prefix."""
+        pattern = re.compile(
+            r"^\d{1,2}/\d{1,2}/\d{2,4},\s+\d{1,2}:\d{2}\s*(?:AM|PM)?\s+-\s+(.+?):\s+(.+)$",
+            re.IGNORECASE,
+        )
+        messages = []
+        for line in content.split("\n"):
+            match = pattern.match(line.strip())
+            if not match:
+                continue
+            sender, message = match.group(1).strip(), match.group(2).strip()
+            if sender_name.lower() not in sender.lower():
+                continue
+            if message in ("<Media omitted>", "This message was deleted"):
+                continue
+            messages.append(message)
+        return "\n".join(messages)
 
     def _clean_text(self, text: str) -> str:
         text = re.sub(r'\n{3,}', '\n\n', text)

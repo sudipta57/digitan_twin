@@ -11,12 +11,15 @@ class DocType(str, Enum):
     article = "article"
     paper = "paper"
     testimony = "testimony"
+    whatsapp = "whatsapp"
+    diary = "diary"
 
 
 class SourceType(str, Enum):
     pdf = "pdf"
     url = "url"
     text = "text"
+    whatsapp = "whatsapp"
 
 
 class SourceMetadata(BaseModel):
@@ -28,8 +31,9 @@ class SourceMetadata(BaseModel):
 class IngestRequest(BaseModel):
     figure_id: str
     source_type: SourceType
-    content: str  # base64 for pdf, url string, or raw text
+    content: str  # base64 for pdf, url string, raw text, or whatsapp .txt content
     metadata: SourceMetadata
+    whatsapp_sender_name: Optional[str] = None
 
 
 class IngestResponse(BaseModel):
@@ -109,5 +113,36 @@ class FigureInfo(BaseModel):
     name: str
     years: str
     description: str
-    portrait_url: str
-    source_count: int
+    portrait_url: str = ""
+    is_public: bool = False
+    relationship: Optional[str] = None
+    source_count: int = 0
+
+
+class FiguresResponse(BaseModel):
+    public: list[FigureInfo]
+    personal: list[FigureInfo]
+
+
+class CreateFigureRequest(BaseModel):
+    name: str
+    years_from: int
+    years_to: Optional[int] = None
+    relationship: Optional[str] = None
+    bio: Optional[str] = None
+
+
+class CreateFigureResponse(BaseModel):
+    figure_id: str
+    slug: str
+    dataset_name: str
+
+
+class UserInfo(BaseModel):
+    user_id: str
+    email: str
+    name: str
+
+
+class GoogleAuthRequest(BaseModel):
+    token: str

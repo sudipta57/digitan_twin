@@ -9,6 +9,8 @@ const DOC_TYPE_ICONS: Record<string, string> = {
   article: '📰',
   letter: '✉️',
   paper: '📄',
+  whatsapp: '💬',
+  diary: '📔',
 }
 
 interface Props {

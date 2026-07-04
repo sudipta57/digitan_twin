@@ -11,12 +11,13 @@
 
 ## API Keys Required
 
-You need **two** API keys:
+You need **Cognee** plus **one** LLM provider:
 
 | Key | Get it from |
 |-----|------------|
 | `COGNEE_API_KEY` + `COGNEE_BASE_URL` | [platform.cognee.ai/api-keys](https://platform.cognee.ai/api-keys) |
-| `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `GEMINI_API_KEY` (if using `LLM_PROVIDER=gemini`) | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `OPENAI_API_KEY` + `OPENAI_BASE_URL` (if using `LLM_PROVIDER=openai`, e.g. GLM-5 via AWS Bedrock Mantle) | your provider's console |
 
 ---
 
@@ -43,7 +44,11 @@ cp .env.example .env
 # Now edit .env with your real API keys:
 #   COGNEE_API_KEY=your_actual_cognee_key
 #   COGNEE_BASE_URL=https://tenant-YOUR-ID.aws.cognee.ai
+#   LLM_PROVIDER=gemini              # or "openai"
 #   GEMINI_API_KEY=your_actual_gemini_key
+#   OPENAI_API_KEY=your_actual_openai_compatible_key     # only needed if LLM_PROVIDER=openai
+#   OPENAI_BASE_URL=https://bedrock-mantle.ap-south-1.api.aws/v1
+#   OPENAI_MODEL=zai.glm-5
 ```
 
 ### Verify Backend
@@ -99,6 +104,17 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 You should see:
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+#### Choosing the LLM provider
+
+`LLM_PROVIDER` in `backend/.env` (`gemini` or `openai`) picks the default model. To override it
+for a single run without editing `.env`, prefix the same `uvicorn` command with the env var —
+a shell-exported variable always wins over `.env`:
+
+```bash
+LLM_PROVIDER=gemini uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000   # Google Gemini
+LLM_PROVIDER=openai uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000   # GLM-5 via AWS Bedrock Mantle
 ```
 
 ### Terminal 2 — Frontend
@@ -219,7 +235,7 @@ digital-twin/
 │   │   └── graph.py               # GET /figures, /topics, /contradictions
 │   ├── services/
 │   │   ├── cognee_service.py      # Cognee Cloud memory graph
-│   │   ├── llm_service.py         # Google Gemini prompt + response
+│   │   ├── llm_service.py         # LLM prompt + response (Gemini or OpenAI-compatible)
 │   │   └── parser_service.py      # PDF/URL/text chunking
 │   ├── models/
 │   │   └── schemas.py             # Pydantic models
@@ -262,7 +278,8 @@ digital-twin/
 
 | Issue | Fix |
 |-------|-----|
-| `GEMINI_API_KEY is not set` | Edit `backend/.env` with your real Gemini key |
+| `GEMINI_API_KEY is not set` | You're on `LLM_PROVIDER=gemini` — edit `backend/.env` with your real Gemini key |
+| `OPENAI_API_KEY and OPENAI_BASE_URL must be set` | You're on `LLM_PROVIDER=openai` — edit `backend/.env` with your provider key + base URL |
 | `Cognee ingestion failed` | Verify `COGNEE_API_KEY` and `COGNEE_BASE_URL` in `.env` |
 | Frontend can't reach backend | Check `frontend/.env.local` has `VITE_API_URL=http://localhost:8000` |
 | CORS errors in browser | Make sure backend is running on port 8000 |

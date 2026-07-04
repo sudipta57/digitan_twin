@@ -1,12 +1,17 @@
 import cognee
 import time
 import os
-from backend.models.schemas import SourceMetadata, Citation, Contradiction, Topic, Statement
+from cognee.modules.search.types import SearchType
+from backend.models.schemas import SourceMetadata, Contradiction, Topic
+from backend.services.llm_service import LLMService
 
 
 class CogneeService:
 
     _connected = False
+
+    def __init__(self):
+        self.llm_svc = LLMService()
 
     async def _ensure_connected(self):
         """Connect to Cognee Cloud once per process. Cognee Cloud manages its
@@ -36,41 +41,51 @@ class CogneeService:
         await cognee.cognify(datasets=[dataset_name])
 
         elapsed_ms = int((time.time() - start) * 1000)
-        topics = await self._detect_topics(figure_id, chunks)
 
+        # Topic detection is deliberately NOT run here: it requires its own recall + LLM
+        # round-trip (see get_topics), which was pushing /ingest past the frontend's request
+        # timeout on anything but trivially small sources. The sidebar already fetches topics
+        # separately via GET /topics/{figure_id}, so nothing here actually needs this value.
         return {
             "nodes_created": len(chunks) * 3,
-            "topics_detected": topics,
+            "topics_detected": [],
             "processing_time_ms": elapsed_ms,
         }
 
-    async def query_figure(self, figure_id: str, question: str) -> dict:
+    async def _recall_chunks(self, figure_id: str, question: str, top_k: int = 10) -> list[dict]:
+        """Raw retrieval — returns the actual ingested text (with our SOURCE_TITLE/YEAR/DOC_TYPE
+        tags already embedded), not a synthesized answer. Cognee's default GRAPH_COMPLETION search
+        type has its own backend LLM generate an answer directly, bypassing our persona/citation
+        logic entirely, so every recall here must pin query_type=CHUNKS explicitly."""
         await self._ensure_connected()
         dataset_name = f"figure_{figure_id}"
-        results = await cognee.recall(question, datasets=[dataset_name])
-        return results
+        try:
+            results = await cognee.recall(
+                question, datasets=[dataset_name], query_type=SearchType.CHUNKS, top_k=top_k,
+            )
+        except Exception:
+            return []
+        return [r for r in results if isinstance(r, dict) and r.get("text")]
+
+    async def query_figure(self, figure_id: str, question: str) -> list[dict]:
+        return await self._recall_chunks(figure_id, question, top_k=8)
 
     async def get_contradictions(self, figure_id: str) -> list[Contradiction]:
-        await self._ensure_connected()
-        dataset_name = f"figure_{figure_id}"
-
-        await cognee.cognify(datasets=[dataset_name])
-
-        raw = await cognee.recall(
-            "Find beliefs and opinions that contradict each other or changed over time",
-            datasets=[dataset_name],
+        chunks = await self._recall_chunks(
+            figure_id, "beliefs, opinions, or claims that changed over time or contradict each other",
+            top_k=15,
         )
-
-        return self._parse_contradictions(raw)
+        texts = [c["text"] for c in chunks]
+        if not texts:
+            return []
+        return await self.llm_svc.extract_contradictions(texts)
 
     async def get_topics(self, figure_id: str) -> list[Topic]:
-        await self._ensure_connected()
-        dataset_name = f"figure_{figure_id}"
-        raw = await cognee.recall(
-            "What are the main topic areas and subject domains covered?",
-            datasets=[dataset_name],
-        )
-        return self._parse_topics(raw)
+        chunks = await self._recall_chunks(figure_id, "main topics and subject areas covered", top_k=15)
+        texts = [c["text"] for c in chunks]
+        if not texts:
+            return []
+        return await self.llm_svc.extract_topics(texts)
 
     async def forget_source(self, figure_id: str, source_title: str) -> int:
         await self._ensure_connected()
@@ -78,71 +93,7 @@ class CogneeService:
         await cognee.forget(dataset=dataset_key)
         return 12
 
-    async def _detect_topics(self, figure_id: str, chunks: list[str]) -> list[str]:
-        dataset_name = f"figure_{figure_id}"
-        raw = await cognee.recall(
-            "List the main topics and subject areas in the ingested content",
-            datasets=[dataset_name],
-        )
-        topics = []
-        if isinstance(raw, list):
-            for item in raw[:5]:
-                if hasattr(item, "content"):
-                    topics.append(str(item.content)[:50])
-                elif isinstance(item, str):
-                    topics.append(item[:50])
-        return topics if topics else ["general"]
-
-    def _parse_contradictions(self, raw_results) -> list[Contradiction]:
-        contradictions = []
-        if not isinstance(raw_results, list):
-            return contradictions
-
-        for i in range(0, len(raw_results) - 1, 2):
-            try:
-                node_a = raw_results[i]
-                node_b = raw_results[i + 1]
-
-                content_a = getattr(node_a, "content", str(node_a))
-                content_b = getattr(node_b, "content", str(node_b))
-                meta_a = getattr(node_a, "metadata", {})
-                meta_b = getattr(node_b, "metadata", {})
-
-                contradiction = Contradiction(
-                    topic=getattr(node_a, "topic", "belief"),
-                    statement_a=Statement(
-                        content=content_a[:300],
-                        source=meta_a.get("SOURCE_TITLE", "Unknown source"),
-                        year=int(meta_a.get("YEAR", 0)),
-                    ),
-                    statement_b=Statement(
-                        content=content_b[:300],
-                        source=meta_b.get("SOURCE_TITLE", "Unknown source"),
-                        year=int(meta_b.get("YEAR", 0)),
-                    ),
-                    tension_score=getattr(node_a, "tension_score", 0.75),
-                    resolution="unresolved",
-                )
-                contradictions.append(contradiction)
-            except Exception:
-                continue
-
-        return contradictions[:5]
-
-    def _parse_topics(self, raw_results) -> list[Topic]:
-        topics = []
-        if not isinstance(raw_results, list):
-            return topics
-
-        seen = set()
-        for item in raw_results[:10]:
-            name = getattr(item, "content", str(item))[:30].strip()
-            if name and name not in seen:
-                seen.add(name)
-                topics.append(Topic(
-                    name=name,
-                    strength=round(getattr(item, "score", 0.7), 2),
-                    source_count=getattr(item, "source_count", 1),
-                ))
-
-        return topics
+    async def forget_figure(self, figure_id: str) -> None:
+        """Permanently deletes a figure's entire dataset, e.g. when a user deletes their twin."""
+        await self._ensure_connected()
+        await cognee.forget(dataset=f"figure_{figure_id}")

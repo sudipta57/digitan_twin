@@ -3,11 +3,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from pathlib import Path
+import logging
 import os
 
+# load_dotenv() never overrides a variable already set in the shell, so
+# `LLM_PROVIDER=gemini uvicorn backend.main:app ...` takes precedence over .env
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
-from backend.routers import ingest, chat, graph
+# uvicorn already configured its own loggers by this point (it does so in
+# Config.__init__, before importing the "backend.main:app" string), so adding
+# our handler here — rather than before load_dotenv — is what makes it land on
+# uvicorn's "uvicorn"/"uvicorn.access" loggers too instead of just our own.
+# Those two have propagate=False, so a root-only handler would miss them.
+_file_handler = logging.FileHandler(Path(__file__).parent / "backend.log")
+_file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.INFO)
+_root_logger.addHandler(_file_handler)
+
+for _uvicorn_logger_name in ("uvicorn", "uvicorn.access"):
+    logging.getLogger(_uvicorn_logger_name).addHandler(_file_handler)
+
+from backend.routers import auth, figures, ingest, chat, graph
 
 app = FastAPI(
     title="Dead People's Digital Twin API",
@@ -26,6 +44,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(figures.router)
 app.include_router(ingest.router)
 app.include_router(chat.router)
 app.include_router(graph.router)
