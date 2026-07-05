@@ -25,7 +25,7 @@ Every response is:
 
 ## Demo
 
-[Add demo video link after recording]
+[[Demo video]](https://youtu.be/LK0iXbZXF2s)
 
 ## How It Works
 
