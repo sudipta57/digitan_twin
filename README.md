@@ -151,7 +151,7 @@ digital-twin/
 
 ## Team - Aloo Siddo
 
-Sudipta Ghorami
-Piyush Paul
-Samiran Pal
+Sudipta Ghorami, 
+Piyush Paul, 
+Samiran Pal, 
 Tiasha Biswas
